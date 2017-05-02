@@ -491,6 +491,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
       buffer.clear();
       int result = readSource(formatHolder, flagsOnlyBuffer, true);
       if (result == C.RESULT_FORMAT_READ) {
+	// JRT: WE Were HERE
         onInputFormatChanged(formatHolder.format);
       } else if (result == C.RESULT_BUFFER_READ) {
         // End of stream read having not read a format.
