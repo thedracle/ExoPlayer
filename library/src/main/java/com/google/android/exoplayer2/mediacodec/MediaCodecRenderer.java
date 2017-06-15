@@ -488,8 +488,8 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
       buffer.clear();
       int result = readSource(formatHolder, buffer, true);
       if (result == C.RESULT_FORMAT_READ) {
-	    if(formatHolder.format.width <= 1920 && formatHolder.format.height <= 1280)
-          onInputFormatChanged(formatHolder.format);
+	    //if(formatHolder.format.width <= 1920 && formatHolder.format.height <= 1080)
+        onInputFormatChanged(formatHolder.format);
       }
       else if (result == C.RESULT_BUFFER_READ) {
         // End of stream read having not read a format.

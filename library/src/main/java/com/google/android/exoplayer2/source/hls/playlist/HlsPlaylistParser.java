@@ -236,10 +236,13 @@ public final class HlsPlaylistParser implements ParsingLoadable.Parser<HlsPlayli
           height = Format.NO_VALUE;
         }
         line = iterator.next();
-        Format format = Format.createVideoContainerFormat(Integer.toString(variants.size()),
-            MimeTypes.APPLICATION_M3U8, null, codecs, bitrate, width, height, Format.NO_VALUE, null,
-            0);
-        variants.add(new HlsMasterPlaylist.HlsUrl(line, format));
+
+        if(width <= 1920 && height <= 1080) {
+          Format format = Format.createVideoContainerFormat(Integer.toString(variants.size()),
+                  MimeTypes.APPLICATION_M3U8, null, codecs, bitrate, width, height, Format.NO_VALUE, null,
+                  0);
+          variants.add(new HlsMasterPlaylist.HlsUrl(line, format));
+        }
       }
     }
     return new HlsMasterPlaylist(baseUri, variants, audios, subtitles, muxedAudioFormat,
