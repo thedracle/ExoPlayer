@@ -169,6 +169,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
   private final DrmSessionManager<FrameworkMediaCrypto> drmSessionManager;
   private final boolean playClearSamplesWithoutKeys;
   private final DecoderInputBuffer buffer;
+  private final DecoderInputBuffer flagsOnlyBuffer;
   private final FormatHolder formatHolder;
   private final List<Long> decodeOnlyPresentationTimestamps;
   private final MediaCodec.BufferInfo outputBufferInfo;
@@ -227,6 +228,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
     this.drmSessionManager = drmSessionManager;
     this.playClearSamplesWithoutKeys = playClearSamplesWithoutKeys;
     buffer = new DecoderInputBuffer(DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DISABLED);
+    flagsOnlyBuffer = DecoderInputBuffer.newFlagsOnlyInstance();
     formatHolder = new FormatHolder();
     decodeOnlyPresentationTimestamps = new ArrayList<>();
     outputBufferInfo = new MediaCodec.BufferInfo();
@@ -448,6 +450,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
       codecReconfigurationState = RECONFIGURATION_STATE_NONE;
       codecReinitializationState = REINITIALIZATION_STATE_NONE;
       decoderCounters.decoderReleaseCount++;
+      buffer.data = null;
       try {
         codec.stop();
       } finally {
@@ -485,15 +488,13 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
     }
     if (format == null) {
       // We don't have a format yet, so try and read one.
-      buffer.clear();
-      int result = readSource(formatHolder, buffer, true);
+      flagsOnlyBuffer.clear();
+      int result = readSource(formatHolder, flagsOnlyBuffer, true);
       if (result == C.RESULT_FORMAT_READ) {
-	    //if(formatHolder.format.width <= 1920 && formatHolder.format.height <= 1080)
         onInputFormatChanged(formatHolder.format);
-      }
-      else if (result == C.RESULT_BUFFER_READ) {
+      } else if (result == C.RESULT_BUFFER_READ) {
         // End of stream read having not read a format.
-        Assertions.checkState(buffer.isEndOfStream());
+        Assertions.checkState(flagsOnlyBuffer.isEndOfStream());
         inputStreamEnded = true;
         processEndOfStream();
         return;
@@ -502,14 +503,28 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
         return;
       }
     }
+    // We have a format.
     maybeInitCodec();
     if (codec != null) {
       TraceUtil.beginSection("drainAndFeed");
       while (drainOutputBuffer(positionUs, elapsedRealtimeUs)) {}
       while (feedInputBuffer()) {}
       TraceUtil.endSection();
-    } else if (format != null) {
-      skipToKeyframeBefore(positionUs);
+    } else {
+      skipSource(positionUs);
+      // We need to read any format changes despite not having a codec so that drmSession can be
+      // updated, and so that we have the most recent format should the codec be initialized. We may
+      // also reach the end of the stream. Note that readSource will not read a sample into a
+      // flags-only buffer.
+      flagsOnlyBuffer.clear();
+      int result = readSource(formatHolder, flagsOnlyBuffer, false);
+      if (result == C.RESULT_FORMAT_READ) {
+        onInputFormatChanged(formatHolder.format);
+      } else if (result == C.RESULT_BUFFER_READ) {
+        Assertions.checkState(flagsOnlyBuffer.isEndOfStream());
+        inputStreamEnded = true;
+        processEndOfStream();
+      }
     }
     decoderCounters.ensureUpdated();
   }
@@ -1164,7 +1179,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
    *
    * @param name The decoder name.
    * @param format The input format.
-   * @return True if the device is known to set the number of audio channels in the output format
+   * @return True if the decoder is known to set the number of audio channels in the output format
    *     to 2 for the given input format, whilst only actually outputting a single channel. False
    *     otherwise.
    */
